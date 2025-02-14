@@ -11,6 +11,7 @@ from COMMANDS import start_main_menu, init_group, init_topic, set_topic_name, he
 from bot_functions.main.forwarding import handle_message
 # --- Command Handlers
 from bot_menu.main_menu import handle_menu_buttons
+from database.db_removal_tool import handle_remove_connection_command
 from database.db_setup import init_db
 
 if __name__ == "__main__":
@@ -42,6 +43,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("init_topic", init_topic))
     app.add_handler(CommandHandler("set_topic_name", set_topic_name))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("remove_connection", handle_remove_connection_command))
 
     # Add MessageHandler for group messages
     group_message_handler = MessageHandler(
