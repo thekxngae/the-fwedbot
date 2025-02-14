@@ -122,6 +122,18 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "❌ Unrecognized action.\n"
                 "Please use the buttons to navigate or return to the main menu."
             )
+        else:
+            # Log the unrecognized action and send the error response
+            logger.warning(f"Unrecognized action received: {action}")
+
+            if query.message:
+                await query.edit_message_text(
+                    "❌ Unrecognized action. Please try again or return to the main menu."
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ Unrecognized action. Please try again or return to the main menu."
+                )
             await query.answer()
 
     except Exception as e:
