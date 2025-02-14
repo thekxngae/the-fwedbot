@@ -40,15 +40,4 @@ def get_current_step_from_db(user_id: int) -> str:
         logger.error("[DATABASE Error] Failed to fetch current_step for user %s: %s", user_id, e, exc_info=True)
         return "start"  # Fallback default step
 
-async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    logger.warning(f"[Fallback] Unhandled command received for chat_id={chat_id}: {update.message.text}")
-
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="⚠️ Sorry, I didn’t recognize that command. Please type /start to begin."
-    )
-
-
-
 

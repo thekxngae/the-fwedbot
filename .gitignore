@@ -2,6 +2,9 @@
 .venv/
 env/
 
+# Database
+database/database.db
+
 # Byte-compiled files
 *.pyc
 *.pyo

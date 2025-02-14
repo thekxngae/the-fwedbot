@@ -8,7 +8,6 @@ from bot_commands.add_connection import (handle_button, handle_title, handle_ids
                                          handle_source_topic_selection)
 from COMMANDS import start_main_menu, init_group, init_topic, set_topic_name, help_command
 from bot_functions.main.forwarding import handle_message
-from bot_functions.helpers.helpers import fallback
 # --- Command Handlers
 from bot_menu.main_menu import handle_menu_buttons
 from database.db_setup import init_db
@@ -59,13 +58,10 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(start_main_menu, pattern="main_menu"))
     app.add_handler(CallbackQueryHandler(handle_source_group_selection, pattern="source_group_"))
     app.add_handler(CallbackQueryHandler(handle_source_topic_selection, pattern="source_topic_"))
-    app.add_handler(CallbackQueryHandler(handle_source_topic_selection, pattern="source_topic_none"))
+    app.add_handler(CallbackQueryHandler(handle_source_topic_selection, pattern="no_source_topic"))
     app.add_handler(CallbackQueryHandler(handle_target_group_selection, pattern="target_group_"))
     app.add_handler(CallbackQueryHandler(handle_target_topic_selection, pattern="target_topic_"))
-    app.add_handler(CallbackQueryHandler(handle_target_topic_selection, pattern="target_topic_none"))
-
-    # --- Register Fallback Handlers for Unexpected Input
-    app.add_handler(MessageHandler(filters.ALL, fallback))
+    app.add_handler(CallbackQueryHandler(handle_target_topic_selection, pattern="no_target_topic"))
 
     # --- Run the bot
     logger.info("[Bot] Bot is now running...")

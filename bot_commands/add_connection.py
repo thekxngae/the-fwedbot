@@ -244,117 +244,91 @@ async def handle_source_group_selection(update: Update, context: ContextTypes.DE
     query: CallbackQuery = update.callback_query
     await query.answer()  # Acknowledge callback query
 
-    if not query.data.startswith("source_group_"):
-        raise ValueError(f"Unexpected callback data format: {query.data}")
-
     chat_id = update.effective_chat.id
     user_id = query.from_user.id
-
-    logger.info(f"[Group Selection] Received callback data: {query.data}")
 
     try:
         # Step-checker to ensure the user is in the correct stage
         if not await step_checker(user_id, expected_step):
+            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{expected_step}' while trying to add IDs.")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Unexpected input. It seems you're not in the phase to add connection IDs. Restarting workflow...",
+                text="❌ Unexpected input. It seems you're not in the correct stage. Restarting the workflow."
             )
-            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{SK_ADD3}' while trying to add IDs.")
-            return  # Exit early
+            return
 
-        # Extract group_id from callback data
-        if query.data.startswith("source_group_"):
+        # Handle callback data
+        if query.data == "source_group_none":
+            # Allow skipping if no source group is selected
+            logger.info(f"[Group Selection] User {user_id} chose 'No specific group'.")
+            context.user_data["source_group_id"] = None
+            await context.bot.send_message(chat_id=chat_id, text="✅ No source group has been selected.")
+        elif query.data.startswith("source_group_"):
+            # Extract group_id from callback data
             callback_group_id = query.data.replace("source_group_", "").strip()
+
+            # Fetch and validate the group from the database
+            fetch_groups_query = "SELECT group_id, group_name FROM user_groups WHERE user_id = ?;"
+            user_groups = execute_query(fetch_groups_query, (user_id,))
+            if not user_groups:
+                logger.warning(f"[Group Selection] No groups found for user_id {user_id}.")
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="⚠️ No groups are configured. Please add groups and try again."
+                )
+                return
+
+            # Match the callback group_id to one in the user's groups
+            matching_group = next((group for group in user_groups if str(group[0]) == callback_group_id), None)
+            if not matching_group:
+                logger.error(f"[Group Selection] Invalid group_id {callback_group_id} for user_id {user_id}.")
+                await context.bot.send_message(chat_id=chat_id, text="❌ Selected group is invalid. Please try again.")
+                return
+
+            source_group_id, source_group_name = matching_group
+            context.user_data["source_group_id"] = source_group_id
+
+            # Update user connection with selected source group
+            update_query = "UPDATE user_connections SET source_group_id = ? WHERE connection_id = ?;"
+            execute_non_query(update_query, (source_group_id, connection_id))
+
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ Group '{source_group_name}' has been selected as the source group."
+            )
         else:
             raise ValueError(f"Unexpected callback data format: {query.data}")
 
-        # Ensure callback_group_id is valid and exists in user_groups
-        fetch_groups_query = """
-            SELECT group_id, group_name FROM user_groups
-            WHERE user_id = ?;
-        """
-        user_groups = execute_query(fetch_groups_query, (user_id,))
-
-        if not user_groups:
-            logger.warning(f"[Group Selection] No groups found for user_id: {user_id}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⚠️ No groups are configured for this user. Please add groups and try again. Use /help to learn how."
-            )
-            return
-
-        # Match the callback group_id to one in the user's groups
-        matching_group = next((group for group in user_groups if str(group[0]) == callback_group_id), None)
-
-        if matching_group is None:
-            logger.error(
-                f"[Group Selection] Invalid group_id: {callback_group_id}, not found in user_groups for user_id: {user_id}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ Selected group is invalid. Please try again."
-            )
-            return
-
-        source_group_id, source_group_name = matching_group
-        logger.info(f"[Group Selection] Matched group_id: {source_group_id}, group_name: {source_group_name}")
-
-        # Save group_id in context.user_data
-        context.user_data["source_group_id"] = source_group_id
-        logger.info(f"`source_group_id` stored in user_data: {context.user_data.get('source_group_id')}")
-
-        # Proceed with updating the database with the selected group
-        update_query = """
-            UPDATE user_connections
-            SET source_group_id = ?
-            WHERE connection_id = ?;
-        """
-        execute_non_query(update_query, (source_group_id, connection_id))
-        logger.info(
-            f"[CONNECTION] Updated connection_id {context.user_data.get('connection_id')} with source_group_id {source_group_id}")
-
-        # Notify user of success
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ Group '{source_group_name}' has been successfully selected as the source group."
-        )
-
-        group_topics = get_group_topics(source_group_id)
-
-        logger.info(f"Executing query for group_id: {source_group_id} (type: {type(source_group_id)})")
-
+        # Fetch topics for the selected source group
+        source_group_id = context.user_data.get("source_group_id")
+        group_topics = get_group_topics(source_group_id) if source_group_id else []
         if not group_topics:
-            logger.warning(f"[Fetching Topics] No topics found for user_id: {user_id}")
+            logger.warning(f"[Group Topics] No topics found for group_id {source_group_id}.")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ No topics are configured for this group. Please add topics and try again."
+                text="⚠️ No topics configured for this group. You can proceed by selecting 'No specific topic'."
             )
-            return
 
-        # Display the topics as selectable buttons
+        # Display topics as selectable buttons
         keyboard = [
             [InlineKeyboardButton(topic_name, callback_data=f"source_topic_{topic_id}")]
             for topic_id, topic_name in group_topics
         ]
-        # Add an option for 'No specific topic'
         keyboard.append([InlineKeyboardButton("No specific topic", callback_data="source_topic_none")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
         await context.bot.send_message(
             chat_id=chat_id,
             text="Please select the source topic for your connection:",
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        # Update user's current step in user state
-        logger.info(f"Type of `next_step`: {type(next_step)}, Value: {next_step}")
-        execute_non_query(query=next_step, params=(current_step, user_id))
-        logger.info(f"[CONNECTION] Updated user {user_id} current step to selecting_source_topic.")
+        # Update user step state
+        execute_non_query(next_step, (current_step, user_id))
 
     except Exception as e:
-        logger.error(f"[Group Selection Error] Failed to select group: {e}")
+        logger.error(f"[Group Selection Error] User {user_id} encountered an error: {e}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ An error occurred while selecting the group. Please try again."
+            text="❌ An unexpected error occurred. Please restart the workflow and try again."
         )
 
 def get_group_topics(group_id: int) -> list:
@@ -376,11 +350,7 @@ def get_group_topics(group_id: int) -> list:
 
 async def handle_source_topic_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query: CallbackQuery = update.callback_query
-    await query.answer()  # Acknowledge the callback query
-
-    if not query.data.startswith("source_topic_") and query.data != "source_topic_none":
-        raise ValueError(f"Unexpected callback data format: {query.data}")
-
+    await query.answer()
 
     expected_step = SK_ADD4
     current_step = SK_ADD5
@@ -388,478 +358,193 @@ async def handle_source_topic_selection(update: Update, context: ContextTypes.DE
 
     user_id = query.from_user.id
     chat_id = update.effective_chat.id
+    connection_id = context.user_data.get("connection_id")
 
     try:
-        # Step Check: Verify user is in the correct workflow phase
         if not await step_checker(user_id, expected_step):
+            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{expected_step}' for source topic selection.")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Unexpected input. It seems you're not in the correct phase. Restarting the workflow..."
+                text="❌ Unexpected input. It seems you're not in the correct stage. Restarting the workflow."
             )
-            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{expected_step}'.")
-            return  # Exit early
+            return
 
-        # Extract topic_id from callback data
-        if query.data.startswith("source_topic_"):
+        # Handle callback data
+        if query.data == "source_topic_none":
+            context.user_data["source_topic_id"] = None
+            await context.bot.send_message(
+                chat_id=chat_id, text="✅ No source topic has been selected."
+            )
+        elif query.data.startswith("source_topic_"):
             callback_topic_id = query.data.replace("source_topic_", "").strip()
-            logger.info(f"Raw callback_topic_id: {callback_topic_id} (type: {type(callback_topic_id)})")
-        elif query.data == "source_topic_none":
-            callback_topic_id = "none"  # Mark none as a special case
-            logger.info(f"[TARGET TOPIC] User {user_id} selected 'No specific topic'.")
-        else:
-            raise ValueError(f"Unexpected callback data format received: {query.data}")
-
-        # Validate and handle the extracted topic_id
-        if callback_topic_id == "none":
-            logger.info(f"[VALIDATION] callback_topic_id is 'none', skipping numeric validation.")
-        elif not callback_topic_id.isdigit():
-            raise ValueError(f"Invalid callback topic_id (non-numeric value): {callback_topic_id}")
-
-        # Normalize topic_id if it's numeric
-        if callback_topic_id != "none":
-            callback_topic_id = str(int(callback_topic_id))  # Convert to int and back to string
-            logger.info(
-                f"Validated and normalized callback_topic_id: {callback_topic_id} (type: {type(callback_topic_id)})")
-
-        # Retrieve the group_id from the user's context
-        group_id = context.user_data.get("source_group_id")
-        if group_id is None:
-            logger.error("[Topic Selection Error] No source group_id found in 'context.user_data'.")
+            context.user_data["source_topic_id"] = int(callback_topic_id)
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Could not determine the group you selected. Please restart the workflow."
-            )
-            return
-
-        # Fetch topics associated with the group_id from the database
-        fetch_topics_query = """
-            SELECT topic_id, topic_name FROM group_topics
-            WHERE group_id = ?;
-        """
-        user_topics = execute_query(fetch_topics_query, (group_id,))
-        logger.info(f"Fetched topics for group_id {group_id}: {user_topics}")
-
-        if not user_topics:  # If no topics are available for the group
-            logger.warning(f"[Topic Selection] No topics found for group_id: {group_id}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⚠️ This group has no topics configured. Please add topics and try again. Use /help to learn how."
-            )
-            return
-
-        if callback_topic_id != "none":
-            matching_topic = next(
-                (topic for topic in user_topics if str(topic[0]) == callback_topic_id), None
-            )
-            if matching_topic is None:
-                logger.error(
-                    f"[Topic Selection] Invalid topic_id: {callback_topic_id}, not found in group_topics for user_id: {user_id}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="❌ The selected topic is invalid. Please try again."
-                )
-                return
-
-            # Successful topic selection
-            topic_id, topic_name = matching_topic  # Extract data
-            logger.info(f"[Topic Selection] Matched topic_id: {topic_id}, topic_name: {topic_name}")
-
-            connection_id = context.user_data.get("connection_id")
-
-            # Update user_connections with the selected topic
-            update_user_connection_query = """
-                        UPDATE user_connections
-                        SET source_topic_id = ?
-                        WHERE connection_id = ?;
-                    """
-            execute_non_query(update_user_connection_query, (topic_id, connection_id))
-            logger.info(f"[CONNECTION] Updated user {user_id} with source_topic_id {topic_id}.")
-
-            # Notify success and proceed to the next stage
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"✅ Topic '{topic_name}' has been selected successfully as the source topic.\n"
-                     f"Please continue to assign the target group."
+                text="✅ Source topic has been successfully selected."
             )
         else:
-            # Special case for "none"
-            logger.info(f"[Topic Selection] User {user_id} chose to not select a source topic.")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ No specific topic has been selected as the source topic."
-            )
+            raise ValueError(f"Unexpected callback data format: {query.data}")
 
-        # Fetch the list of groups the user has added to the bot
+        # Fetch user groups to assign target group
         user_groups = get_user_groups(user_id)
         if not user_groups:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="⚠️ You have not added any groups to the bot yet. Please add fwedbot to the groups you want to configure.",
+                text="⚠️ You currently have no groups configured. Please add a group."
             )
             return
 
-        # Display the groups as selectable buttons
+        # Create group selection buttons
         keyboard = [
             [InlineKeyboardButton(group_name, callback_data=f"target_group_{group_id}")]
             for group_id, group_name in user_groups
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
         await context.bot.send_message(
             chat_id=chat_id,
             text="Please select the target group for your connection:",
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        # Update user's current step in user_states
-        try:
-            logger.info(f"[STEP UPDATE] Executing query: {next_step} with params: {(current_step, user_id)}")
-            execute_non_query(next_step, params=(current_step, user_id))
+        # Update source_topic_id in the database
+        source_topic_id = context.user_data.get("source_topic_id")
+        update_query = """
+            UPDATE user_connections
+            SET source_topic_id = ?
+            WHERE connection_id = ?;
+        """
+        execute_non_query(update_query, (source_topic_id, connection_id))
+        logger.info(f"Updated source_topic_id {source_topic_id} for connection_id {connection_id}.")
 
-            # Verify the step update
-            fetch_query = "SELECT current_step FROM user_states WHERE user_id = ?;"
-            updated_result = execute_query(fetch_query, params=(user_id,))
-            if not updated_result or updated_result[0][0] != current_step:
-                logger.error(
-                    f"[VERIFICATION FAILED] User {user_id} current_step update failed. "
-                    f"Expected: {current_step}, Found: {updated_result}"
-                )
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⚠️ Failed to update your progress. Please try again."
-                )
-                return
-        except Exception as e:
-            logger.error(
-                f"[DATABASE ERROR] Failed to update/verify current_step for user {user_id}: {e}", exc_info=True
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ An error occurred while updating your progress. Please try again."
-            )
-            return
+        # Update user step state
+        execute_non_query(next_step, (current_step, user_id))
 
-    except Exception as error:
-        logger.error(f"[Topic Selection Error] Unexpected error for user_id {user_id}: {error}", exc_info=True)
+    except Exception as e:
+        logger.error(f"[Source Topic Selection Error] User {user_id} encountered an error: {e}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ An unexpected error occurred. Please try again or contact support."
+            text="❌ An error occurred. Please restart the workflow and try again."
         )
 
 async def handle_target_group_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query: CallbackQuery = update.callback_query
-    await query.answer()  # Acknowledge the callback
+    await query.answer()
 
-    if not query.data.startswith("target_group_"):
-        raise ValueError(f"Unexpected callback data format: {query.data}")
-
-    user_id = query.from_user.id
-    chat_id = query.message.chat.id
-    connection_id = context.user_data.get("connection_id")
     expected_step = SK_ADD5
     current_step = SK_ADD6
     next_step = SQL_NEXT_STEP
 
+    user_id = query.from_user.id
+    chat_id = query.message.chat.id
+    connection_id = context.user_data.get("connection_id")
+
     try:
         if not await step_checker(user_id, expected_step):
+            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{expected_step}' for target group selection.")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Unexpected input. It seems you're not in the correct phase. Restarting the workflow."
+                text="❌ Unexpected input. It seems you're not in the correct stage. Restarting the workflow."
             )
             return
 
-        # Extract group_id from callback data
         if query.data.startswith("target_group_"):
             callback_group_id = query.data.replace("target_group_", "").strip()
+            context.user_data["target_group_id"] = int(callback_group_id)
+            await context.bot.send_message(chat_id=chat_id, text="✅ Target group successfully selected.")
         else:
             raise ValueError(f"Unexpected callback data format: {query.data}")
 
-        # Validate that the group_id is a numeric value (supporting negative IDs, e.g., -100...)
-        if not callback_group_id.lstrip('-').isdigit():  # Allow for a leading negative sign
-            raise ValueError(f"Invalid callback group_id (non-numeric value): {callback_group_id}")
-
-        try:
-            # Normalize callback_group_id to an integer
-            normalized_group_id = int(callback_group_id.strip())
-
-            # Ensure callback_group_id is valid and exists in user_groups
-            fetch_groups_query = """
-                SELECT group_id, group_name FROM user_groups
-                WHERE user_id = ?;
-            """
-
-            user_groups = execute_query(query=fetch_groups_query, params=(user_id,))
-            logger.info(f"Fetched user_groups for user_id={user_id}: {user_groups}")
-
-            logger.info(f"Executing query for group_id: {normalized_group_id} (type: {type(normalized_group_id)})")
-
-            if not user_groups:
-                logger.warning(f"[Group Selection] No groups found for user_id: {user_id}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⚠️ No groups are configured for this user. Please add groups and try again. Use /help to learn how."
-                )
-                return
-
-            # Match the callback group_id to one in the user_groups
-            matching_group = next((group for group in user_groups if group[0] == normalized_group_id), None)
-
-            logger.info(f"callback_group_id: {callback_group_id}, type: {type(callback_group_id)}")
-            logger.info(f"group[0] for each group in user_groups: {[group[0] for group in user_groups]}, types: {[type(group[0]) for group in user_groups]}")
-
-            if matching_group is None:
-                logger.error(
-                    f"[Target Group Selection] Invalid group_id: {normalized_group_id}, not found in user_groups for user_id: {user_id}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="❌ Selected group is invalid. Please try again."
-                )
-                return
-
-            target_group_id, target_group_name = matching_group
-            logger.info(f"[Target Group Selection] Matched group_id: {target_group_id}, group_name: {target_group_name}")
-
-            # Save group_id in context.user_data
-            context.user_data["target_group_id"] = target_group_id
-            logger.info(f"`target_group_id` stored in user_data: {context.user_data.get('target_group_id')}")
-
-            # Update target_group_id in the database
-            update_query = """
-                UPDATE user_connections
-                SET target_group_id = ?
-                WHERE connection_id = ?;
-            """
-
-            execute_non_query(update_query, (target_group_id, connection_id))
-            logger.info(f"[CONNECTION] Updated target_group_id {target_group_id} for connection_id {connection_id}.")
-
-            # Notify user of success
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ Target group selected!",
-            )
-
-            # Prompt user to select the target topic
-            target_topics = get_group_topics(target_group_id)
-            if not target_topics:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=
-                    "⚠️ No topics are configured for the selected group. Please select 'No specific topic' to proceed."
-                )
-            else:
-                # Create buttons for available topics
-                topic_buttons = [
-                    [InlineKeyboardButton(topic_name, callback_data=f"target_topic_{topic_id}")]
-                    for topic_id, topic_name in target_topics
-                ]
-                # Add an option for 'No specific topic'
-                topic_buttons.append([InlineKeyboardButton("No specific topic", callback_data="target_topic_none")])
-                reply_markup = InlineKeyboardMarkup(topic_buttons)
-
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="Please select the target topic for your connection:",
-                    reply_markup=reply_markup,
-                )
-
-        except ValueError as e:
-                logger.error(f"Failed to convert callback_group_id to integer. Received: {callback_group_id} - Error: {e}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="❌ An error occurred while processing the group selection. Please try again."
-                )
-
-        # Update user's current step in user_states
-        try:
-            logger.info(f"[STEP UPDATE] Executing query: {next_step} with params: {(current_step, user_id)}")
-            execute_non_query(next_step, params=(current_step, user_id))
-
-            # Verify the step update
-            fetch_query = "SELECT current_step FROM user_states WHERE user_id = ?;"
-            updated_result = execute_query(fetch_query, params=(user_id,))
-            if not updated_result or updated_result[0][0] != current_step:
-                logger.error(
-                    f"[VERIFICATION FAILED] User {user_id} current_step update failed. "
-                    f"Expected: {current_step}, Found: {updated_result}"
-                )
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⚠️ Failed to update your progress. Please try again."
-                )
-                return
-        except Exception as e:
-            logger.error(
-                f"[DATABASE ERROR] Failed to update/verify current_step for user {user_id}: {e}", exc_info=True
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ An error occurred while updating your progress. Please try again."
-            )
-            return
-
-    except Exception as e:
-        logger.error(f"[TARGET GROUP SELECTION ERROR] User {user_id} - {str(e)}")
+        # Fetch target topics
+        target_group_id = context.user_data.get("target_group_id")
+        target_topics = get_group_topics(target_group_id) if target_group_id else []
+        keyboard = [
+            [InlineKeyboardButton(topic_name, callback_data=f"target_topic_{topic_id}")]
+            for topic_id, topic_name in target_topics
+        ]
+        keyboard.append([InlineKeyboardButton("No specific topic", callback_data="target_topic_none")])
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ An error occurred during target group selection. Please try again or contact support."
+            text="Please select the target topic for your connection:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+        # Update target_group_id in the database
+        target_group_id = context.user_data.get("target_group_id")
+        update_query = """
+            UPDATE user_connections
+            SET target_group_id = ?
+            WHERE connection_id = ?;
+        """
+        execute_non_query(update_query, (target_group_id, connection_id))
+        logger.info(f"Updated target_group_id {target_group_id} for connection_id {connection_id}.")
+
+        # Update user step state
+        execute_non_query(next_step, (current_step, user_id))
+
+    except Exception as e:
+        logger.error(f"[Target Group Selection Error] User {user_id} encountered an error: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ An error occurred. Please restart the workflow and try again."
         )
 
 async def handle_target_topic_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query: CallbackQuery = update.callback_query
-    await query.answer()  # Acknowledge the callback
+    await query.answer()
 
-    if not query.data.startswith("target_topic_") and query.data != "target_topic_none":
-        raise ValueError(f"Unexpected callback data format: {query.data}")
-
-
-    user_id = query.from_user.id
-    chat_id = query.message.chat.id
-    connection_id = context.user_data.get("connection_id")
     expected_step = SK_ADD6
     current_step = SK_START
     next_step = SQL_NEXT_STEP
 
+    user_id = query.from_user.id
+    chat_id = query.message.chat.id
+    connection_id = context.user_data.get("connection_id")
+
     try:
         if not await step_checker(user_id, expected_step):
+            logger.warning(f"[STEP CHECK] User {user_id} is not in step '{expected_step}' for target topic selection.")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ Unexpected input. It seems you're not in the correct phase. Restarting the workflow."
+                text="❌ Unexpected input. It seems you're not in the correct stage. Restarting the workflow."
             )
             return
 
-        if query.data.startswith("target_topic_"):
+        if query.data == "target_topic_none":
+            context.user_data["target_topic_id"] = None
+            await context.bot.send_message(
+                chat_id=chat_id, text="✅ No target topic has been selected."
+            )
+        elif query.data.startswith("target_topic_"):
             callback_topic_id = query.data.replace("target_topic_", "").strip()
-            logger.info(f"Raw callback_topic_id: {callback_topic_id} (type: {type(callback_topic_id)})")
-        elif query.data == "target_topic_none":
-            callback_topic_id = "none"
-            logger.info(f"[TARGET TOPIC] User {user_id} selected 'No specific topic'.")
+            context.user_data["target_topic_id"] = int(callback_topic_id)
+            await context.bot.send_message(chat_id=chat_id, text="✅ Target topic successfully selected.")
         else:
-            raise ValueError(f"Unexpected callback data format received: {query.data}")
+            raise ValueError(f"Unexpected callback data format: {query.data}")
 
-        # Validate the extracted topic_id
-        if callback_topic_id == "none":
-            logger.info(f"[VALIDATION] callback_topic_id is 'none', skipping numeric validation.")
-        elif not callback_topic_id.isdigit():
-            raise ValueError(f"Invalid callback topic_id (non-numeric value): {callback_topic_id}")
-
-        # Normalize topic_id if it's numeric
-        if callback_topic_id != 'none':
-            callback_topic_id = str(int(callback_topic_id))  # Convert to int and back to string
-            logger.info(
-                f"Validated and normalized callback_topic_id: {callback_topic_id} (type: {type(callback_topic_id)})")
-
-        # Retrieve the group_id from the user's context
-        group_id = context.user_data.get("target_group_id")
-        if group_id is None:
-            logger.error("[Topic Selection Error] No target group_id found in 'context.user_data'.")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ Could not determine the group you selected. Please restart the workflow."
-            )
-            return
-
-        # Fetch topics associated with the group_id from the database
-        fetch_topics_query = """
-             SELECT topic_id, topic_name FROM group_topics
-             WHERE group_id = ?;
-         """
-        user_topics = execute_query(fetch_topics_query, (group_id,))
-        logger.info(f"Fetched topics for group_id {group_id}: {user_topics}")
-
-        if not user_topics:  # If no topics are available for the group
-            logger.warning(f"[Topic Selection] No topics found for group_id: {group_id}")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⚠️ This group has no topics configured. Please add topics and try again. Use /help to learn how."
-            )
-            return
-
-        # Ensure callback_topic_id matches one of the topics if not "none"
-        if callback_topic_id != "none":
-            matching_topic = next(
-                (topic for topic in user_topics if str(topic[0]) == callback_topic_id), None
-            )
-            if matching_topic is None:
-                logger.error(
-                    f"[Topic Selection] Invalid topic_id: {callback_topic_id}, not found in group_topics for user_id: {user_id}")
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="❌ The selected topic is invalid. Please try again."
-                )
-                return
-
-            # Successful topic selection
-            topic_id, topic_name = matching_topic  # Extract data
-            logger.info(f"[Topic Selection] Matched topic_id: {topic_id}, topic_name: {topic_name}")
-
-            # Update the selected `target_topic_id` in the database
-            update_query = """
-                 UPDATE user_connections
-                 SET target_topic_id = ?
-                 WHERE connection_id = ?;
-             """
-            execute_non_query(update_query, (topic_id, connection_id))
-            logger.info(f"[CONNECTION] Updated target_topic_id {topic_id} for connection_id {connection_id}.")
-
-            # Save target_topic_id in context.user_data
-            context.user_data["target_topic_id"] = topic_id
-            logger.info(f"`target_topic_id` stored in user_data: {context.user_data.get('target_topic_id')}")
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"✅ You can now create another connection or return to the main menu.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Return to Main Menu", callback_data="main_menu")]
-                ])
-            )
-        else:
-            # Special case for "none"
-            logger.info(f"[Topic Selection] User {user_id} chose to not select a source topic.")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ No specific topic has been selected for the target topic."
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"✅ You can now create another connection or return to the main menu.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Return to Main Menu", callback_data="main_menu")]
-                ])
-            )
-
-        # Update user's current step in user_states
-        try:
-            logger.info(f"[STEP UPDATE] Executing query: {next_step} with params: {(current_step, user_id)}")
-            execute_non_query(next_step, params=(current_step, user_id))
-
-            # Verify the step update
-            fetch_query = "SELECT current_step FROM user_states WHERE user_id = ?;"
-            updated_result = execute_query(fetch_query, params=(user_id,))
-            if not updated_result or updated_result[0][0] != current_step:
-                logger.error(
-                    f"[VERIFICATION FAILED] User {user_id} current_step update failed. "
-                    f"Expected: {current_step}, Found: {updated_result}"
-                )
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text="⚠️ Failed to update your progress. Please try again."
-                )
-                return
-
-        except Exception as e:
-            logger.error(
-                f"[DATABASE ERROR] Failed to update/verify current_step for user {user_id}: {e}", exc_info=True
-            )
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="❌ An error occurred while updating your progress. Please try again."
-            )
-            return
-
-    except Exception as e:
-        logger.error(f"[TARGET TOPIC SELECTION ERROR] User {user_id} - {str(e)}")
+        # Complete the workflow
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ An error occurred during target topic selection. Please try again or contact support."
+            text="🎉 Connection Configuartion Complete! You can now create another connection or return to the main menu.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("Return to Main Menu", callback_data="main_menu")]
+            ])
+        )
+
+        # Update target_topic_id in the database
+        target_topic_id = context.user_data.get("target_topic_id")
+        update_query = """
+            UPDATE user_connections
+            SET target_topic_id = ?
+            WHERE connection_id = ?;
+        """
+        execute_non_query(update_query, (target_topic_id, connection_id))
+        logger.info(f"Updated target_topic_id {target_topic_id} for connection_id {connection_id}.")
+
+        # Update user step state to reset
+        execute_non_query(next_step, (current_step, user_id))
+
+    except Exception as e:
+        logger.error(f"[Target Topic Selection Error] User {user_id} encountered an error: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ An unexpected error occurred. Please restart the workflow and try again."
         )
