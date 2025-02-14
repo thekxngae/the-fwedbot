@@ -1,0 +1,29 @@
+# Exclude virtual environments
+.venv/
+env/
+
+# Byte-compiled files
+*.pyc
+*.pyo
+__pycache__/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.idea/
+.vscode/
+
+# Exclude test output and coverage reports
+*.coverage
+.coverage.*
+
+# Ignore environment variables or secrets
+.env
+*.secrets
