@@ -82,7 +82,7 @@ async def start_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=chat_id,
             text=append_footer(
-                "👋 Welcome to **fwedbot**!\n\n"
+                "👋 Welcome to fwedbot!\n\n"
                 "This bot tracks the activity of coin address' sent in Alpha Chats,"
                 " and reflects them in to your desired group."
                 "\n\n🚀 Use the buttons below to get started!"
