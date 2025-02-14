@@ -1,7 +1,8 @@
 # --- Constants
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters)
-from GLOSSARY import (BOT_TOKEN, logger)
+from GLOSSARY import logger
+from database.bot_token import BOT_TOKEN
 from bot_commands.add_connection import (handle_button, handle_title, handle_ids,
                                          handle_target_group_selection, handle_target_topic_selection,
                                          handle_source_group_selection,
