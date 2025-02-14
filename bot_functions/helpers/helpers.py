@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton
 from telegram.ext import ContextTypes
 
 from GLOSSARY import logger, CUSTOM_FOOTER
@@ -40,4 +40,12 @@ def get_current_step_from_db(user_id: int) -> str:
         logger.error("[DATABASE Error] Failed to fetch current_step for user %s: %s", user_id, e, exc_info=True)
         return "start"  # Fallback default step
 
+def append_main_menu_button(keyboard):
+    """
+    Appends a 'Return to Main' button to the provided keyboard.
+    """
+    if not keyboard:
+        keyboard = []
+    keyboard.append([InlineKeyboardButton("🔙 Return to Main Menu", callback_data="back_to_main")])
+    return keyboard
 
