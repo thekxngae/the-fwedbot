@@ -33,7 +33,7 @@ logger.info("Bot starting, logging is now active!")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 #### ------- [ TELEGRAM BOT TOKEN ] ------- ####
-BOT_TOKEN = "7095249675:AAHofk8N_XOF0eno-qzO3WsXhoWjM0yEcZo" ###### <----- Place your Telegram Bot Token inside the " "
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE" ###### <----- Place your Telegram Bot Token inside the ""
 if not BOT_TOKEN:
     raise ValueError("The bot token is not set! Please configure the TELEGRAM_BOT_TOKEN environment variable.")
 
