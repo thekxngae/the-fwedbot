@@ -109,15 +109,12 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
             await query.answer()
 
-        elif action == "back_to_main":
-            await start_main_menu(update, context)
-
         else:
             # Log the unrecognized action and send the error response
             logger.warning(f"Unrecognized action received: {action}")
 
             if query.message:
-                await query.message.reply_text(
+                await query.edit_message_text(
                     "❌ Unrecognized action. Please try again or return to the main menu."
                 )
             else:
