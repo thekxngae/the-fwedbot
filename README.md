@@ -61,7 +61,8 @@ If you choose to install and run the code yourself, you must ensure some pre-req
 
 Before running the code, you must ensure to set up your bot token.
 
-- In the Database folder, inside of bot_token.py, you need to edit the Bot Token Placeholder.
+- In the GLOSSARY, you will need to edit the Bot Token Placeholder.
+- The placeholder will read "YOUR_BOT_TOKEN_HERE"
 - Replace this with your actual Bot Token from BotFather on TG.
 - If you don't have a Bot Token yet, refer to Google on Instructions how to set up BotFather.
 
