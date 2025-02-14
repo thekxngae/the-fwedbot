@@ -63,6 +63,12 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(handle_target_group_selection, pattern="target_group_"))
     app.add_handler(CallbackQueryHandler(handle_target_topic_selection, pattern="target_topic_"))
     app.add_handler(CallbackQueryHandler(handle_target_topic_selection, pattern="no_target_topic"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="support_fwedbot"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="config_settings"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="toggle_connections"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="view_connections"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="remove_connections"))
+    app.add_handler(CallbackQueryHandler(handle_menu_buttons, pattern="back_to_main"))
 
     # --- Run the bot
     logger.info("[Bot] Bot is now running...")

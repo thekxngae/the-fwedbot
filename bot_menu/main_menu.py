@@ -1,128 +1,134 @@
-import asyncio
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram import Update
+from telegram import InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from GLOSSARY import logger, SK_START, CallbackData, SK_ADD1
+from GLOSSARY import logger
 from bot_commands.add_connection import handle_button
-from bot_functions.helpers.helpers import append_footer
-from database.db_manager import execute_query, execute_non_query
-from database.db_user_queries import save_user, update_user
-from database.db_setup import SQL_CHECK_USER_EXISTS
+from bot_functions.helpers.helpers import append_main_menu_button
+
 
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Handles button presses from the menu.
+    Handles button presses from the menu gracefully.
     """
     query = update.callback_query  # Retrieve the callback query object
-    action = query.data  # The action triggered by the button press
+    action = query.data  # Action triggered by the button press
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    current_step = SK_ADD1
 
-    logger.info("Received callback data: %s", action)  # Log the received action for debugging
+    logger.info("Received callback data: %s", action)  # Log the action for debugging
 
     try:
+        # Handle specific button actions
         if action == "add_connection":
             await handle_button(update, context)
 
         elif action == "view_connections":
-            await view_connections(update, context)
+            # Provide user with supporting bot details
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "👀 View Connections feature is under construction.\n"
+                "Check back later!",
+                reply_markup=reply_markup)
 
         elif action == "toggle_connections":
-            await toggle_connections(update, context)
+            # Provide user with supporting bot details
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "📡 Toggle Connections feature is under construction.\n"
+                "Check back later!",
+                reply_markup=reply_markup
+            )
 
         elif action == "remove_connection":
-            keyboard = [
-                [
-                    InlineKeyboardButton("Remove Specific Connection", callback_data="remove_specific"),
-                ],
-                [
-                    InlineKeyboardButton("❌ Remove All Connections", callback_data="confirm_remove_all"),
-                ],
-                [
-                    InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_to_main"),
-                ],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            # Provide user with supporting bot details
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
 
-            if query.message:
-                await query.edit_message_text(
-                    append_footer(
-                        "To remove a connection, you can use the following bot_commands:\n\n"
-                        "`/remove_connection <connection_title>`\n\n"
-                        "`/remove_connection <source_chat_id> <target_chat_id>`\n"
-                        "`/remove_connection <source_chat_id> <source_topic_id> <target_chat_id>`\n"
-                        "`/remove_connection <source_chat_id> <target_chat_id> <target_topic_id>`\n"
-                        "`/remove_connection <source_chat_id> <source_topic_id> <target_chat_id> <target_topic_id>`\n\n"
-                        "Or use the buttons below."
-                    ),
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown",
-                )
-            else:
-                await query.edit_message_text(
-                    append_footer(
-                        "To remove a connection, you can use the following bot_commands:\n"
-                        "`/remove_connection <connection_title>`\n"
-                        "`/remove_connection <source_chat_id> <target_chat_id>`\n"
-                        "`/remove_connection <source_chat_id> <source_topic_id> <target_chat_id>`\n"
-                        "`/remove_connection <source_chat_id> <target_chat_id> <target_topic_id>`\n"
-                        "`/remove_connection <source_chat_id> <source_topic_id> <target_chat_id> <target_topic_id>`\n\n"
-                        "Or use the buttons below."
-                    ),
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown",
-                )
+            await query.edit_message_text(
+                "🛠 Currently, editing settings is under development.\n"
+                "Stay tuned for updates!",
+            reply_markup = reply_markup
+            )
+
+        elif action == "config_settings":
+            # Provide user with supporting bot details
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "🛠 Currently, editing settings is under development.\n"
+                "Stay tuned for updates!",
+                reply_markup = reply_markup
+            )
+
+        elif action == "edit_connection":
+            # Future feature: Editing a connection
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "🛠 Currently, editing connections is under development.\n"
+                "Stay tuned for updates!",
+                reply_markup = reply_markup
+            )
+
+        elif action == "view_logs":
+            # Placeholder action for viewing logs
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "📜 Logs feature is under construction.\n"
+                "Check back later!",
+                reply_markup = reply_markup
+            )
 
         elif action == "support_fwedbot":
-            if query.message:
-                await query.edit_message_text(
-                    "💖 Thank you for supporting **Fwedbot**!\n\n"
-                    "You can support us by:\n"
-                    "- Sharing Fwedbot with your friends 🌐\n"
-                    "- Reporting bugs and suggesting features 🐞\n"
-                    "- Using our referral codes 💹\n\n"
-                    "🚀 Check out:\n\n"
-                    "- [Nova Bot](https://t.me/TradeonNovaBot?start=r-CE0V7EW)\n"
-                    "- [Trojan Bot](https://t.me/solana_trojanbot?start=r-kxngkxnquest)\n"
-                    "- [MevX Bot](https://t.me/Mevx?start=kxngkxnquest)\n"
-                    "- Join the Private Alpha Group 💹\n\n"
-                    "🚀 Check out: https://t.me/thekxngsquarters\n\n",
-                    parse_mode="Markdown",
-                    disable_web_page_preview=True,
-                )
-            else:
-                await query.edit_message_text(
-                    "💖 Thank you for supporting **Fwedbot**!\n\n"
-                    "You can support us by:\n"
-                    "- Sharing Fwedbot with your friends 🌐\n"
-                    "- Reporting bugs and suggesting features 🐞\n"
-                    "- Using our referral codes 💹\n\n"
-                    "🚀 Check out:\n\n"
-                    "- [Nova Bot](https://t.me/TradeonNovaBot?start=r-CE0V7EW)\n"
-                    "- [Trojan Bot](https://t.me/solana_trojanbot?start=r-kxngkxnquest)\n"
-                    "- [MevX Bot](https://t.me/Mevx?start=kxngkxnquest)\n"
-                    "- Join the Private Alpha Group 💹\n\n"
-                    "🚀 Check out: https://t.me/thekxngsquarters\n\n",
-                    parse_mode="Markdown",
-                    disable_web_page_preview=True,
-                )
+            # Provide user with supporting bot details
+            keyboard = []  # Empty keyboard for now
+            reply_markup = InlineKeyboardMarkup(append_main_menu_button(keyboard))  # Add main menu button
+
+            await query.edit_message_text(
+                "Thanks for supporting Fwedbot! 💖\n\n"
+                "If you would like to support the team, and the project, you can do so by using our trading referral links for the top bots on Solana:\n"
+                " You can also: \n\n"
+                "- Check out some of @TheKxngAE 's post's on twitter.\n\n"
+                "- Share Fwedbot with friends 🌐\n\n"
+                "- Suggest features or report bugs 🐞\n\n"
+                "- Use our referral codes 💹\n\n"
+                "Explore:\n"
+                "Trade on Nova Bot | [Nova Bot](https://t.me/TradeonNovaBot?start=r-CE0V7EW)\n"
+                "Trade on Trojan Bot | [Trojan Bot](https://t.me/solana_trojanbot?start=r-kxngkxnquest)\n"
+                "Trade on MevX Bot | [MevX Bot](https://t.me/Mevx?start=kxngkxnquest)\n\n"
+                "🚀 Join our group: https://t.me/thekxngsquarters",
+                parse_mode="Markdown",
+                disable_web_page_preview=True,
+                reply_markup = reply_markup
+            )
             await query.answer()
 
-        else:
-            # Log the unrecognized action and send the error response
-            logger.warning(f"Unrecognized action received: {action}")
+        elif action == "back_to_main":
+            from COMMANDS import start_main_menu
+            # Redirect to main menu
+            await start_main_menu(update, context)
 
-            if query.message:
-                await query.edit_message_text(
-                    "❌ Unrecognized action. Please try again or return to the main menu."
-                )
-            else:
-                await query.edit_message_text(
-                    "❌ Unrecognized action. Please try again or return to the main menu."
-                )
+        else:
+            # Handle unrecognized actions gracefully
+            logger.warning("Unrecognized action received: %s", action)
+            await query.edit_message_text(
+                "❌ Unrecognized action.\n"
+                "Please use the buttons to navigate or return to the main menu."
+            )
             await query.answer()
 
     except Exception as e:
-        logger.error("Error handling menu buttons: %s", e, exc_info=True)
+        # Log the error and inform the user
+        logger.error("Error while handling menu buttons: %s", e, exc_info=True)
+        await query.edit_message_text(
+            "❌ An error occurred while processing your request.\n"
+            "Please try again later."
+        )
 
