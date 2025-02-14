@@ -4,6 +4,7 @@ env/
 
 # Database
 database/database.db
+database/bot_token.py
 
 # Byte-compiled files
 *.pyc
